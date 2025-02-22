@@ -1,3 +1,11 @@
+# Project-specific
+*.giantt/
+concatenated-giantt-source.txt
+actual-current-directory-tree.txt
+
+# OS detritus
+*.DS_Store
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

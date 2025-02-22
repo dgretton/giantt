@@ -1,0 +1,32 @@
+######################################################################
+#                                                                    #
+#                            Giantt Items                            #
+#     This file contains all include Giantt items in topological     #
+#           order according to the REQUIRES (⊢) relation.            #
+#             Edit this file manually at your own risk.              #
+#                                                                    #
+######################################################################
+
+◑ market_research! 1w "Conduct market research for target audience" {"Demo Project"} demo,research,planning
+◑ seed_selection!! 2d "Select watermelon varieties suited to local climate" {"Watermelon Farm"} melon0,planning,seeds
+● soil_testing! 3d "Test soil pH and nutrient levels" {"Watermelon Farm"} melon0,preparation,soil
+○ backend_api! 10d "Develop backend API endpoints" {"Demo Project"} demo,software,backend >>> ⊢[market_research]
+○ field_preparation!! 1w "Prepare and till field for planting" {"Watermelon Farm"} melon0,preparation,equipment >>> ⊢[soil_testing]
+○ seedling_start! 3w "Start seedlings in greenhouse" {"Watermelon Farm"} melon0,growth,greenhouse >>> ⊢[seed_selection]
+○ ui_design!! 5d "Design user interface mockups" {"Demo Project"} demo,design,ui >>> ⊢[market_research]
+○ frontend_dev!! 8d "Implement frontend components" {"Demo Project"} demo,software,frontend >>> ⊢[ui_design]
+○ irrigation_setup!!! 5d "Install drip irrigation system" {"Watermelon Farm"} melon0,infrastructure,water >>> ⊢[field_preparation]
+○ integration_test! 3d "Integrate and test frontend with backend" {"Demo Project"} demo,testing,integration >>> ⊢[frontend_dev,backend_api]
+○ transplanting!! 4d "Transplant seedlings to field" {"Watermelon Farm"} melon0,growth,planting >>> ⊢[seedling_start,irrigation_setup]
+○ app_prototype!! 2w "Create initial app prototype" {"Demo Project"} demo,software,prototype >>> ⊢[integration_test]
+○ demo_preparation! 2d "Prepare demonstration materials" {"Demo Project"} demo,presentation >>> ⊢[integration_test]
+○ harvest_planning!! 1w "Plan harvest logistics and labor" {"Watermelon Farm"} melon0,planning,harvest >>> ⊢[transplanting]
+○ pest_management! 2d "Implement pest management strategy" {"Watermelon Farm"} melon0,maintenance,pests >>> ⊢[transplanting]
+○ pollination_check! 3w "Monitor and support pollinator activity" {"Watermelon Farm"} melon0,growth,pollinators >>> ⊢[transplanting]
+○ weed_control! 2mo3w "Regular weeding and maintenance" {"Watermelon Farm"} melon0,maintenance,weeds >>> ⊢[transplanting]
+○ fruit_harvesting!!! 2w3d "Harvest ripe watermelons" {"Watermelon Farm"} melon0,harvest,labor >>> ⊢[weed_control,pollination_check]
+○ user_testing!! 4d "Conduct user testing sessions" {"Demo Project"} demo,testing,users >>> ⊢[app_prototype]
+○ bug_fixes! 5d "Address issues from user testing" {"Demo Project"} demo,software,bugfix >>> ⊢[user_testing]
+○ market_delivery!! 3d "Transport and deliver to markets" {"Watermelon Farm"} melon0,market,distribution >>> ⊢[fruit_harvesting]
+○ season_review! 2d "Analyze season successes and failures" {"Watermelon Farm"} melon0,analysis,planning >>> ⊢[market_delivery]
+○ stakeholder_demo!! 1d "Present to key stakeholders" {"Demo Project"} demo,presentation,milestone >>> ⊢[demo_preparation,bug_fixes]
