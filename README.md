@@ -15,7 +15,7 @@ A command-line utility for managing task dependencies and life planning through 
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/yourusername/giantt.git
+   git clone https://github.com/dgretton/giantt.git
    cd giantt
    ```
 
