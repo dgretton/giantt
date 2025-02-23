@@ -466,9 +466,9 @@ def set_status(file: str, occlude_file: str, substring: str, new_status: str):
 @click.option('--tags', help='Comma-separated list of tags')
 @click.option('--status', type=click.Choice([s.name for s in Status]), default='NOT_STARTED')
 @click.option('--requires', help='Comma-separated list of item IDs that this item requires')
-@click.option('--unlocks', help='Comma-separated list of item IDs that this item unlocks')
+@click.option('--any-of', help='Comma-separated list of item IDs that are individually sufficient for this item')
 def add(file: str, occlude_file: str, id: str, title: str, duration: str, priority: str, 
-        charts: str, tags: str, status: str, requires: str, unlocks: str):
+        charts: str, tags: str, status: str, requires: str, any_of: str):
     """Add a new item to the Giantt chart."""
     file = file or get_default_giantt_path()
     occlude_file = occlude_file or get_default_giantt_path(occlude=True)
@@ -491,8 +491,8 @@ def add(file: str, occlude_file: str, id: str, title: str, duration: str, priori
     if requires:
         relations['REQUIRES'] = requires.split(',')
 
-    if unlocks:
-        relations['UNLOCKS'] = unlocks.split(',')
+    if any_of:
+        relations['ANYOF'] = any_of.split(',')
 
     # Create new item
     try:
@@ -619,7 +619,7 @@ def modify(file: str, occlude_file: str, add: bool, remove: bool, substring: str
     # Handle relations
     relation_types = {r.name.lower() for r in RelationType}
     if (add or remove) and property.lower() not in relation_types:
-        raise click.ClickException("Invalid relation type. Must be one of: requires, unlocks, supercharges, indicates, before, with, conflicts")
+        raise click.ClickException(f"Invalid relation type. Must be one of: {', '.join(relation_types)}")
 
     if property.lower() in relation_types:
         relation_type = property.upper()
@@ -628,6 +628,8 @@ def modify(file: str, occlude_file: str, add: bool, remove: bool, substring: str
         if add:
             item.relations.setdefault(relation_type, []).extend(targets)
         elif remove:
+            if relation_type not in item.relations:
+                raise click.ClickException(f"No {relation_type} relations to remove")
             item.relations[relation_type] = [t for t in item.relations.get(relation_type, []) if t not in targets]
 
         # Prevent cycles when modifying REQUIRES relations
@@ -661,7 +663,7 @@ def modify(file: str, occlude_file: str, add: bool, remove: bool, substring: str
             item.tags = [t.strip() for t in value.split(',') if t.strip()]
         else:
             raise click.ClickException(
-                "Unknown property. Must be one of: title, duration, priority, status, charts, tags, requires, unlocks, supercharges, indicates, before, with, conflicts")
+                f"Unknown property. Must be one of: title, duration, priority, status, charts, {', '.join(relation_types)}, or tags")
 
     save_graph_files(file, occlude_file, graph)
     click.echo(f"Modified {property} of item '{item.id}'")

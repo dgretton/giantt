@@ -21,14 +21,26 @@ class Priority(Enum):
     HIGH = "!!"
     CRITICAL = "!!!"
 
+### Relations
+# Each relation type uses a symbol followed by comma-separated target IDs:
+# - `⊢` REQUIRES (left side tick)
+# - `⋲` ANYOF (alternate paths)
+# - `≫` SUPERCHARGES (much greater than - suggests enhancement)
+# - `∴` INDICATES (therefore - suggests consequence)
+# - `∪` TOGETHER (shows combination)
+# - `⊟` CONFLICTS (suggests blocking)
+# - `►` (redundancy symbol) BLOCKS (shows all items with ⊢ [REQUIRES] to this item)
+# - `≻` (redundancy symbol) SUFFICIENT (shows all items with ⋲ [ANY] to this item)
+
 class RelationType(Enum):
     REQUIRES = "⊢"
-    UNLOCKS = "►"
+    ANYOF = "⋲"
     SUPERCHARGES = "≫"
     INDICATES = "∴"
-    BEFORE = "↶"
-    WITH = "∪"
-    CONFLICTS = "⊗"
+    TOGETHER = "∪"
+    CONFLICTS = "⊟"
+    BLOCKS = "►"
+    SUFFICIENT = "≻"
 
 class TimeConstraintType(Enum):
     WINDOW = "window"
@@ -485,8 +497,7 @@ class GianttItem:
 
         # Parse relations
         relations = {}
-        rel_symbols = {'⊢': 'REQUIRES', '►': 'UNLOCKS', '≫': 'SUPERCHARGES',
-                      '∴': 'INDICATES', '↶': 'BEFORE', '∪': 'WITH', '⊗': 'CONFLICTS'}
+        rel_symbols = {r.value: r.name for r in RelationType}
 
         for symbol, rel_type in rel_symbols.items():
             pattern = f"{symbol}\\[([^]]+)\\]"
@@ -698,12 +709,12 @@ class GianttGraph:
 
         # Update relations
         new_item.relations['REQUIRES'] = [before_id]
-        new_item.relations['UNLOCKS'] = [after_id]
+        new_item.relations['BLOCKS'] = [after_id]
 
         # Update existing items
-        if 'UNLOCKS' in before_item.relations:
-            before_item.relations['UNLOCKS'].remove(after_id)
-            before_item.relations['UNLOCKS'].append(new_item.id)
+        if 'BLOCKS' in before_item.relations:
+            before_item.relations['BLOCKS'].remove(after_id)
+            before_item.relations['BLOCKS'].append(new_item.id)
 
         if 'REQUIRES' in after_item.relations:
             after_item.relations['REQUIRES'].remove(before_id)
@@ -931,20 +942,21 @@ class GianttDoctor:
     def quick_check(self) -> int:
         """Run a quick check and return number of issues found."""
         self.issues = []
-        self._check_relations()
+        self._check_references()
         return len(self.issues)
 
     def full_diagnosis(self) -> List[Issue]:
         """Run all checks and return detailed issues."""
         self.issues = []
-        self._check_relations()
-        self._check_orphans()
+        self._check_references()
+        # Not clear that any commented below are actually issues
+        # self._check_orphans()
         self._check_chains()
-        self._check_charts()
-        self._check_tags()
+        # self._check_charts()
+        # self._check_tags()
         return self.issues
 
-    def _check_relations(self):
+    def _check_references(self):
         """Check for dangling references in relations."""
         for item_id, item in self.graph.items.items():
             for rel_type, targets in item.relations.items():
@@ -955,7 +967,7 @@ class GianttDoctor:
                             item_id=item_id,
                             message=f"References non-existent item '{target}' in {rel_type.lower()} relation",
                             related_ids=[target],
-                            suggested_fix=f"giantt modify {item_id} {rel_type.lower()} {','.join(t for t in targets if t in self.graph.items)}"
+                            suggested_fix=f"giantt modify {item_id} --remove {rel_type.lower()} {target}"
                         ))
 
     def _check_orphans(self):
@@ -980,28 +992,72 @@ class GianttDoctor:
 
     def _check_chains(self):
         """Check for incomplete dependency chains."""
-        unlocks_map = {
+        blocks_map = {
             item_id: set(targets)
             for item_id, item in self.graph.items.items()
-            for targets in [item.relations.get('UNLOCKS', [])]
+            for targets in [item.relations.get('BLOCKS', [])]
         }
         requires_map = {
             item_id: set(targets)
             for item_id, item in self.graph.items.items()
             for targets in [item.relations.get('REQUIRES', [])]
         }
+        sufficient_map = {
+            item_id: set(targets)
+            for item_id, item in self.graph.items.items()
+            for targets in [item.relations.get('SUFFICIENT', [])]
+        }
+        anyof_map = {
+            item_id: set(targets)
+            for item_id, item in self.graph.items.items()
+            for targets in [item.relations.get('ANY', [])]
+        }
 
-        # Check for items that unlock something but aren't required by it
-        for item_id, unlocked_items in unlocks_map.items():
-            for unlocked in unlocked_items:
-                if unlocked in self.graph.items:
-                    if item_id not in requires_map.get(unlocked, set()):
+        # Check for items that block something but aren't required by it or vice versa
+        for item_id, blocks_items in blocks_map.items():
+            for blocked in blocks_items:
+                if blocked in self.graph.items:
+                    if item_id not in requires_map.get(blocked, set()):
                         self.issues.append(Issue(
                             type=IssueType.INCOMPLETE_CHAIN,
                             item_id=item_id,
-                            message=f"Item unlocks '{unlocked}' but isn't required by it",
-                            related_ids=[unlocked],
-                            suggested_fix=f"giantt modify {unlocked} requires {item_id}"
+                            message=f"Item blocks '{blocked}' but isn't required by it",
+                            related_ids=[blocked],
+                            suggested_fix=f"giantt modify {blocked} --add requires {item_id}"
+                        ))
+        for item_id, requires_items in requires_map.items():
+            for required in requires_items:
+                if required in self.graph.items:
+                    if item_id not in blocks_map.get(required, set()):
+                        self.issues.append(Issue(
+                            type=IssueType.INCOMPLETE_CHAIN,
+                            item_id=item_id,
+                            message=f"Item requires '{required}' but isn't blocked by it",
+                            related_ids=[required],
+                            suggested_fix=f"giantt modify {required} --add blocks {item_id}"
+                        ))
+        # Check for items that are sufficient for something but aren't in an any relation with it, or vice versa
+        for item_id, sufficient_items in sufficient_map.items():
+            for sufficient in sufficient_items:
+                if sufficient in self.graph.items:
+                    if item_id not in anyof_map.get(sufficient, set()):
+                        self.issues.append(Issue(
+                            type=IssueType.INCOMPLETE_CHAIN,
+                            item_id=item_id,
+                            message=f"Item is sufficient for '{sufficient}' but doesn't have any-of relation with it",
+                            related_ids=[sufficient],
+                            suggested_fix=f"giantt modify {sufficient} --add any {item_id}"
+                        ))
+        for item_id, anyof_items in anyof_map.items():
+            for anyof_item in anyof_items:
+                if anyof_item in self.graph.items:
+                    if item_id not in sufficient_map.get(anyof_item, set()):
+                        self.issues.append(Issue(
+                            type=IssueType.INCOMPLETE_CHAIN,
+                            item_id=item_id,
+                            message=f"Item has any-of relation with '{anyof_item}' but isn't sufficient for it",
+                            related_ids=[anyof_item],
+                            suggested_fix=f"giantt modify {anyof_item} --add sufficient {item_id}"
                         ))
 
     def _check_charts(self):
@@ -1022,10 +1078,10 @@ class GianttDoctor:
             chart_set = chart_items[chart]
             for item_id in chart_set:
                 item = self.graph.items[item_id]
-                # Check if any required items or unlocked items in this chart
+                # Check if any required items or blocked items in this chart
                 # aren't also in this chart
                 related_items = set(item.relations.get('REQUIRES', []) + 
-                                 item.relations.get('UNLOCKS', []))
+                                 item.relations.get('BLOCKS', []))
                 for related_id in related_items:
                     if (related_id in self.graph.items and 
                         related_id not in chart_set and
@@ -1035,7 +1091,7 @@ class GianttDoctor:
                             item_id=related_id,
                             message=f"Item is related to items in chart '{chart}' but isn't in it",
                             related_ids=[item_id],
-                            suggested_fix=f"giantt modify {related_id} charts {','.join(self.graph.items[related_id].charts + [chart])}"
+                            suggested_fix=""
                         ))
 
     def _check_tags(self):
@@ -1058,7 +1114,7 @@ class GianttDoctor:
                 item = self.graph.items[item_id]
                 # Check if any required items with this tag aren't also tagged
                 related_items = set(item.relations.get('REQUIRES', []) + 
-                                 item.relations.get('UNLOCKS', []))
+                                 item.relations.get('BLOCKS', []))
                 for related_id in related_items:
                     if (related_id in self.graph.items and 
                         related_id not in tag_set and
@@ -1068,5 +1124,5 @@ class GianttDoctor:
                             item_id=related_id,
                             message=f"Item is related to items with tag '{tag}' but doesn't have it",
                             related_ids=[item_id],
-                            suggested_fix=f"giantt modify {related_id} tags {','.join(self.graph.items[related_id].tags + [tag])}"
+                            suggested_fix=""
                         ))
