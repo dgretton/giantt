@@ -74,7 +74,7 @@ class DurationPart:
     """Represents a single part of a duration with an amount and unit."""
     amount: float
     unit: str
-    
+
     _UNIT_SECONDS = {
         's': 1,
         'min': 60,
@@ -121,7 +121,7 @@ class DurationPart:
 
 class Duration:
     """Handles compound durations like '6mo8d3.5s'."""
-    
+
     def __init__(self, parts: List[DurationPart] = None):
         self.parts = parts or []
 
@@ -158,7 +158,7 @@ class Duration:
     def __add__(self, other):
         """Add two durations."""
         total_seconds = self.total_seconds() + other.total_seconds()
-        
+
         # Convert back to largest sensible unit
         for unit, seconds in sorted(self._UNIT_SECONDS.items(), 
                                   key=lambda x: x[1], reverse=True):
@@ -167,7 +167,7 @@ class Duration:
                 if amount.is_integer():
                     amount = int(amount)
                 return Duration([DurationPart(amount, unit)])
-                
+
         return Duration([DurationPart(total_seconds, 's')])
 
     def __eq__(self, other):
@@ -210,10 +210,10 @@ class TimeWindow:
     @classmethod
     def parse(cls, window_str: str) -> 'TimeWindow':
         """Parse a time window string.
-        
+
         Args:
             window_str: String like '5d' or '5d:2d' (with grace period)
-            
+
         Returns:
             TimeWindow object
         """
@@ -245,14 +245,14 @@ class TimeConstraint:
     def from_string(cls, constraint_str: str) -> Optional['TimeConstraint']:
         if not constraint_str:
             return None
-            
+
         # Parse window constraints
         window_match = re.match(r'window\((\d+[smhdwy])(:\d+[smhdwy])?,([^)]+)\)', constraint_str)
         if window_match:
             window = Duration.parse(window_match.group(1))
             grace = Duration.parse(window_match.group(2)[1:]) if window_match.group(2) else None
             consequence = cls._parse_consequence(window_match.group(3))
-            
+
             return cls(
                 type=TimeConstraintType.WINDOW,
                 duration=window,
@@ -260,14 +260,14 @@ class TimeConstraint:
                 consequence_type=consequence['type'],
                 escalation_rate=consequence['rate']
             )
-            
+
         # Parse deadline constraints
         deadline_match = re.match(r'due\((\d{4}-\d{2}-\d{2})(:\d+[smhdwy])?,([^)]+)\)', constraint_str)
         if deadline_match:
             due_date = deadline_match.group(1)
             grace = Duration.parse(deadline_match.group(2)[1:]) if deadline_match.group(2) else None
             consequence = cls._parse_consequence(deadline_match.group(3))
-            
+
             return cls(
                 type=TimeConstraintType.DEADLINE,
                 duration=Duration.parse('1d'), # Default to 1 day for deadline
@@ -276,18 +276,18 @@ class TimeConstraint:
                 escalation_rate=consequence['rate'],
                 due_date=due_date
             )
-            
+
         # Parse recurring constraints
         recurring_match = re.match(r'every\((\d+[smhdwy])(:\d+[smhdwy])?,([^)]+)\)', constraint_str)
         if recurring_match:
             interval = Duration.parse(recurring_match.group(1))
             grace = Duration.parse(recurring_match.group(2)[1:]) if recurring_match.group(2) else None
             consequence_str = recurring_match.group(3)
-            
+
             stack = 'stack' in consequence_str
             consequence_str = consequence_str.replace(',stack', '')
             consequence = cls._parse_consequence(consequence_str)
-            
+
             return cls(
                 type=TimeConstraintType.RECURRING,
                 duration=interval,
@@ -297,40 +297,40 @@ class TimeConstraint:
                 interval=interval,
                 stack=stack
             )
-            
+
         raise ValueError(f"Invalid time constraint format: {constraint_str}")
-    
+
     def __str__(self):
         base_str = {
             TimeConstraintType.WINDOW: f"window({self.duration}",
             TimeConstraintType.DEADLINE: f"due({self.due_date}",
             TimeConstraintType.RECURRING: f"every({self.interval}",
         }[self.type]
-        
+
         if self.grace_period:
             base_str += f":{self.grace_period}"
-        
+
         base_str += f",{self.consequence_type.value}"
         if self.escalation_rate != EscalationRate.NEUTRAL:
             base_str += f",escalate:{self.escalation_rate.value}"
-        
+
         if self.type == TimeConstraintType.RECURRING and self.stack:
             base_str += ",stack"
-            
+
         return base_str + ")"
 
     @staticmethod
     def _parse_consequence(consequence_str: str) -> dict:
         parts = consequence_str.split(',')
         base_consequence = parts[0].strip()
-        
+
         if len(parts) > 1 and parts[1].startswith('escalate:'):
             rate_str = parts[1][9:]  # Remove 'escalate:'
             return {
                 'type': ConsequenceType.ESCALATING,
                 'rate': EscalationRate(rate_str) if rate_str else EscalationRate.NEUTRAL
             }
-        
+
         return {
             'type': ConsequenceType(base_consequence),
             'rate': EscalationRate.NEUTRAL
@@ -342,14 +342,14 @@ def parse_pre_title_section(pre_title: str) -> Tuple[str, str, str]:
     # Updated pattern to be more flexible with whitespace
     pattern = r'^([○◑⊘●])\s+([^\s]+)\s+([^\s"]+)'
     match = re.match(pattern, pre_title)
-    
+
     if not match:
         raise ValueError(f"Invalid pre-title format: {pre_title}")
-        
+
     status = match.group(1)
     id_priority = match.group(2)
     duration = match.group(3).strip()
-    
+
     return status, id_priority, duration
 
 @dataclass
@@ -362,14 +362,14 @@ class GianttItem:
     duration: Duration = Duration()
     charts: List[str] = field(default_factory=list)
     tags: List[str] = field(default_factory=list)
-    relationships: dict = field(default_factory=dict)
+    relations: dict = field(default_factory=dict)
     time_constraint: Optional[TimeConstraint] = None
     user_comment: Optional[str] = None
     auto_comment: Optional[str] = None
     occlude: bool = False
 
     # type-check everything
-    def __init__(self, id: str, title: str, description: str, status: Status, priority: Priority, duration: Duration, charts: List[str], tags: List[str], relationships: dict, time_constraint: Optional[TimeConstraint], user_comment: Optional[str], auto_comment: Optional[str], occlude: bool = False):
+    def __init__(self, id: str, title: str, description: str, status: Status, priority: Priority, duration: Duration, charts: List[str], tags: List[str], relations: dict, time_constraint: Optional[TimeConstraint], user_comment: Optional[str], auto_comment: Optional[str], occlude: bool = False):
         if not isinstance(id, str):
             raise TypeError(f"id must be a string, not {type(id)}")
         if not isinstance(title, str):
@@ -390,14 +390,14 @@ class GianttItem:
             raise TypeError(f"tags must be a list, not {type(tags)}")
         if not all(isinstance(i, str) for i in tags):
             raise TypeError(f"all elements of tags must be a string")
-        if not isinstance(relationships, dict):
-            raise TypeError(f"relationships must be a dict, not {type(relationships)}")
-        if not all(isinstance(k, str) for k in relationships.keys()):
-            raise TypeError(f"all keys of relationships must be a string")
-        if not all(isinstance(v, list) for v in relationships.values()):
-            raise TypeError(f"all values of relationships must be a list")
-        if not all(all(isinstance(i, str) for i in v) for v in relationships.values()):
-            raise TypeError(f"all elements of all values of relationships must be a string")
+        if not isinstance(relations, dict):
+            raise TypeError(f"relations must be a dict, not {type(relations)}")
+        if not all(isinstance(k, str) for k in relations.keys()):
+            raise TypeError(f"all keys of relations must be a string")
+        if not all(isinstance(v, list) for v in relations.values()):
+            raise TypeError(f"all values of relations must be a list")
+        if not all(all(isinstance(i, str) for i in v) for v in relations.values()):
+            raise TypeError(f"all elements of all values of relations must be a string")
         if not isinstance(time_constraint, (TimeConstraint, type(None))):
             raise TypeError(f"time_constraint must be a TimeConstraint or None, not {type(time_constraint)}")
         if not isinstance(user_comment, (str, type(None))):
@@ -406,7 +406,7 @@ class GianttItem:
             raise TypeError(f"auto_comment must be a string or None, not {type(auto_comment)}")
         if not isinstance(occlude, bool):
             raise TypeError(f"occlude must be a bool, not {type(occlude)}")
-        
+
         self.id = id
         self.title = title
         self.description = description
@@ -415,7 +415,7 @@ class GianttItem:
         self.duration = duration
         self.charts = charts
         self.tags = tags
-        self.relationships = relationships
+        self.relations = relations
         self.time_constraint = time_constraint
         self.user_comment = user_comment
         self.auto_comment = auto_comment
@@ -425,18 +425,18 @@ class GianttItem:
     def from_string(cls, line: str, occlude: bool = False) -> 'GianttItem':
         """Parse a line into a GianttItem."""
         line = line.strip()
-        
+
         # Parse the pre-title section
         pre_title = line[:line.find('"')].strip()
         status_str, id_priority_str, duration_str = parse_pre_title_section(pre_title)
         status = Status(status_str)
-        
+
         # Parse the title
         title_start = line.find('"')
         title_end = line.find('"', title_start + 1)
         while title_end != -1 and line[title_end - 1] == '\\':
             title_end = line.find('"', title_end + 1)
-        
+
         if title_end == -1:
             raise ValueError("No ending quote found for title")
 
@@ -463,36 +463,36 @@ class GianttItem:
         charts_match = charts_pattern.match(post_title)
         if not charts_match:
             raise ValueError("Invalid charts format")
-        
+
         charts_str = charts_match.group(1)
         remainder = charts_match.group(2)
 
-        # Split remainder into tags, relationships, and constraints
+        # Split remainder into tags, relations, and constraints
         parts = remainder.split('>>>')
         tags_str = parts[0].strip()
-        relationships_str = parts[1].strip() if len(parts) > 1 else ""
+        relations_str = parts[1].strip() if len(parts) > 1 else ""
 
-        # Split relationships section into relationships and time constraints
-        constraint_parts = relationships_str.split('@@@')
-        relationships_str = constraint_parts[0].strip()
+        # Split relations section into relations and time constraints
+        constraint_parts = relations_str.split('@@@')
+        relations_str = constraint_parts[0].strip()
         time_constraint_str = constraint_parts[1].strip() if len(constraint_parts) > 1 else None
 
         # Parse charts
         charts = [c.strip().strip('"') for c in charts_str[1:-1].split(",") if c.strip()]
-        
+
         # Parse tags
         tags = [t.strip() for t in tags_str.split(",") if t.strip()]
-        
-        # Parse relationships
-        relationships = {}
+
+        # Parse relations
+        relations = {}
         rel_symbols = {'⊢': 'REQUIRES', '►': 'UNLOCKS', '≫': 'SUPERCHARGES',
                       '∴': 'INDICATES', '↶': 'BEFORE', '∪': 'WITH', '⊗': 'CONFLICTS'}
-        
+
         for symbol, rel_type in rel_symbols.items():
             pattern = f"{symbol}\\[([^]]+)\\]"
-            matches = re.findall(pattern, relationships_str)
+            matches = re.findall(pattern, relations_str)
             if matches:
-                relationships[rel_type] = [t.strip() for t in matches[0].split(",")]
+                relations[rel_type] = [t.strip() for t in matches[0].split(",")]
 
         return cls(
             id=id_str,
@@ -503,7 +503,7 @@ class GianttItem:
             duration=duration,
             charts=charts,
             tags=tags,
-            relationships=relationships,
+            relations=relations,
             time_constraint=time_constraint_str,
             user_comment=None,
             auto_comment=None,
@@ -514,13 +514,13 @@ class GianttItem:
     def to_string(self) -> str:
         charts_str = '{"' + '","'.join(self.charts) + '"}'
         tags_str = ' ' + ','.join(self.tags) if self.tags else ""
-        
+
         rel_parts = []
-        for rel_type, targets in self.relationships.items():
+        for rel_type, targets in self.relations.items():
             if targets:
                 symbol = RelationType[rel_type].value
                 rel_parts.append(f"{symbol}[{','.join(targets)}]")
-        relationships_str = ' >>> ' + ' '.join(rel_parts) if rel_parts else ""
+        relations_str = ' >>> ' + ' '.join(rel_parts) if rel_parts else ""
 
         # JSON encode the title to handle special characters properly
         title_str = json.dumps(self.title)
@@ -530,7 +530,7 @@ class GianttItem:
 
         # Note: occlusion status is not included in the string representation because it only dictates where the string is saved
 
-        return f"{self.status.value} {self.id}{self.priority.value} {self.duration} {title_str} {charts_str}{tags_str}{relationships_str}{user_comment_str}{auto_comment_str}"
+        return f"{self.status.value} {self.id}{self.priority.value} {self.duration} {title_str} {charts_str}{tags_str}{relations_str}{user_comment_str}{auto_comment_str}"
 
     def set_occlude(self, occlude: bool):
         self.occlude = occlude
@@ -545,7 +545,7 @@ class GianttItem:
             self.duration,
             self.charts.copy(),
             self.tags.copy(),
-            self.relationships.copy(),
+            self.relations.copy(),
             self.time_constraint,
             self.user_comment,
             self.auto_comment,
@@ -562,10 +562,10 @@ class CycleDetectedException(Exception):
 class GianttGraph:
     def __init__(self):
         self.items: dict[str, GianttItem] = {}
-        
+
     def add_item(self, item: GianttItem):
         self.items[item.id] = item
-        
+
     def find_by_substring(self, substring: str) -> GianttItem:
         matches = [item for item in self.items.values() if substring.lower() in item.title.lower() or substring == item.id]
         if not matches:
@@ -577,23 +577,23 @@ class GianttGraph:
     def _safe_topological_sort(self, in_memory_copy=None):
         """
         Performs a safe topological sort that detects cycles and provides detailed error information.
-        
+
         Args:
             items: Dictionary mapping item IDs to their GianttItem objects
             in_memory_copy: Optional dictionary to use for sorting attempt (to avoid modifying original)
-            
+
         Returns:
             List of sorted GianttItem objects
-            
+
         Raises:
             CycleDetectedException: If a dependency cycle is detected, with details about the cycle
         """
-        # Build adjacency list for strict relationships
+        # Build adjacency list for strict relations
         adj_list = {item.id: set() for item in self.items.values()}
         for item in self.items.values():
             for rel_type in ['REQUIRES']:
-                if rel_type in item.relationships:
-                    for target in item.relationships[rel_type]:
+                if rel_type in item.relations:
+                    for target in item.relations[rel_type]:
                         if target not in adj_list:
                             continue # Skip non-existent items
                         adj_list[item.id].add(target)
@@ -613,7 +613,7 @@ class GianttGraph:
             node = queue.pop(0)
             sorted_items.append(self.items[node])
             visited.add(node)
-            
+
             for neighbor in adj_list[node]:
                 in_degree[neighbor] -= 1
                 if in_degree[neighbor] == 0:
@@ -626,14 +626,14 @@ class GianttGraph:
                 unvisited = set(self.items.keys()) - visited
                 stack = []
                 path = []
-                
+
                 def dfs(current):
                     if current in stack:
                         cycle_start = stack.index(current)
                         return stack[cycle_start:]
                     if current in visited:
                         return None
-                        
+
                     stack.append(current)
                     for neighbor in adj_list[current]:
                         cycle = dfs(neighbor)
@@ -655,7 +655,7 @@ class GianttGraph:
 
         sorted_items.reverse()
         return sorted_items
-    
+
     def topological_sort(self) -> List[GianttItem]:
         """
         Performs a deterministic topological sort of the graph.
@@ -663,7 +663,7 @@ class GianttGraph:
         """
         # First get basic topological sort
         sorted_items = self._safe_topological_sort()
-        
+
         # Now within each "level" (items with same dependencies depth),
         # sort by deterministic criteria
         def get_item_sort_key(item):
@@ -674,16 +674,16 @@ class GianttGraph:
                 item.id,
                 # Could add more deterministic criteria here
             )
-    
+
         return sorted(sorted_items, key=get_item_sort_key)
-    
+
     def _get_dependency_depth(self, item):
         """Get the maximum dependency depth of an item."""
-        if 'REQUIRES' not in item.relationships:
+        if 'REQUIRES' not in item.relations:
             return 0
-        
+
         max_depth = 0
-        for dep_id in item.relationships['REQUIRES']:
+        for dep_id in item.relations['REQUIRES']:
             if dep_id in self.items:
                 dep_depth = self._get_dependency_depth(self.items[dep_id])
                 max_depth = max(max_depth, dep_depth + 1)
@@ -696,25 +696,25 @@ class GianttGraph:
         before_item = self.items[before_id]
         after_item = self.items[after_id]
 
-        # Update relationships
-        new_item.relationships['REQUIRES'] = [before_id]
-        new_item.relationships['UNLOCKS'] = [after_id]
+        # Update relations
+        new_item.relations['REQUIRES'] = [before_id]
+        new_item.relations['UNLOCKS'] = [after_id]
 
         # Update existing items
-        if 'UNLOCKS' in before_item.relationships:
-            before_item.relationships['UNLOCKS'].remove(after_id)
-            before_item.relationships['UNLOCKS'].append(new_item.id)
+        if 'UNLOCKS' in before_item.relations:
+            before_item.relations['UNLOCKS'].remove(after_id)
+            before_item.relations['UNLOCKS'].append(new_item.id)
 
-        if 'REQUIRES' in after_item.relationships:
-            after_item.relationships['REQUIRES'].remove(before_id)
-            after_item.relationships['REQUIRES'].append(new_item.id)
+        if 'REQUIRES' in after_item.relations:
+            after_item.relations['REQUIRES'].remove(before_id)
+            after_item.relations['REQUIRES'].append(new_item.id)
 
         self.add_item(new_item)
 
     def included_items(self):
         """Get all items that are not occluded."""
         return {item_id: item for item_id, item in self.items.items() if not item.occlude}
-    
+
     def occluded_items(self):
         """Get all items that are occluded."""
         return {item_id: item for item_id, item in self.items.items() if item.occlude}
@@ -724,13 +724,13 @@ class GianttGraph:
         for item in self.items.values():
             new_graph.add_item(item.copy())
         return new_graph
-    
+
     def plus(self, other: 'GianttGraph') -> 'GianttGraph':
         new_graph = self.copy()
         for item in other.items.values():
             new_graph.add_item(item.copy())
         return new_graph
-    
+
     def __add__(self, other: 'GianttGraph') -> 'GianttGraph':
         return self.plus(other)
 
@@ -744,14 +744,14 @@ class LogEntry:
     tags: Set[str]
     metadata: Dict[str, str] = field(default_factory=dict)
     occlude: bool = False
-    
+
     @classmethod
     def create(cls, session_tag: str, message: str, additional_tags: Optional[List[str]] = None, occlude: bool = False) -> 'LogEntry':
         """Create a new log entry with current timestamp."""
         tags = {session_tag}
         if additional_tags:
             tags.update(additional_tags)
-            
+
         return cls(
             session=session_tag,
             timestamp=datetime.now(timezone.utc),
@@ -760,23 +760,23 @@ class LogEntry:
             metadata={},
             occlude=occlude
         )
-    
+
     def has_tag(self, tag: str) -> bool:
         """Check if entry has a specific tag."""
         return tag in self.tags
-    
+
     def has_any_tags(self, tags: List[str]) -> bool:
         """Check if entry has any of the specified tags."""
         return bool(self.tags.intersection(tags))
-    
+
     def has_all_tags(self, tags: List[str]) -> bool:
         """Check if entry has all of the specified tags."""
         return self.tags.issuperset(tags)
-    
+
     def add_tag(self, tag: str) -> None:
         """Add a tag to the entry."""
         self.tags.add(tag)
-    
+
     def remove_tag(self, tag: str) -> None:
         """Remove a tag from the entry."""
         self.tags.discard(tag)
@@ -787,7 +787,7 @@ class LogEntry:
 
     def __str__(self):
         return f"{self.timestamp.isoformat()} - {self.message} ({', '.join(self.tags)})"
-    
+
     def from_dict(data: dict, occlude: bool = False) -> 'LogEntry':
         """Create a LogEntry object from a dictionary."""
         return LogEntry(
@@ -798,12 +798,12 @@ class LogEntry:
             metadata=data.get('meta', {}),
             occlude=occlude
         )
-    
+
     def from_line(line: str, occlude: bool = False) -> 'LogEntry':
         """Create a LogEntry object from a jsonl line."""
         data = json.loads(line)
         return LogEntry.from_dict(data, occlude)
-    
+
     def to_dict(self) -> dict:
         """Convert the LogEntry to a dictionary."""
         # occlusion status is not added to the dictionary because it only dictates where the string is saved
@@ -811,10 +811,10 @@ class LogEntry:
             's': self.session,
             't': self.timestamp.isoformat(),
             'm': self.message,
-            'tags': list(self.tags),
+            'tags': sorted(list(self.tags)),
             'meta': self.metadata
         }
-    
+
     def to_line(self) -> str:
         """Convert the LogEntry to a jsonl line."""
         # occlusion status is not added to the dictionary because it only dictates where the string is saved
@@ -823,10 +823,10 @@ class LogEntry:
 
 class LogCollection:
     """A collection of log entries with query capabilities."""
-    
+
     def __init__(self, entries: Optional[List[LogEntry]] = None):
         self.entries = entries or []
-    
+
     def add_entry(self, entry: LogEntry) -> None:
         """Add a new entry to the collection."""
         index = self.get_first_index_after_timestamp(entry.timestamp)
@@ -840,24 +840,24 @@ class LogCollection:
     def add_entries(self, entries: List[LogEntry]) -> None:
         self.entries.extend(entries)
         self.sort()
-    
+
     def create_entry(self, session_tag: str, message: str, additional_tags: Optional[List[str]] = None, occlude: bool = False) -> LogEntry:
         """Create and add a new entry."""
         entry = LogEntry.create(session_tag, message, additional_tags, occlude)
         self.add_entry(entry)
         return entry
-    
+
     def sort(self) -> None:
         """Sort entries by timestamp."""
         self.entries.sort(key=lambda e: e.timestamp)
-    
+
     def get_by_session(self, session_tag: str) -> List[LogEntry]:
         """Get all entries with a specific session tag."""
         return [entry for entry in self.entries if entry.session == session_tag]
-    
+
     def get_by_tags(self, tags: List[str], require_all: bool = False) -> List[LogEntry]:
         """Get entries with specified tags.
-        
+
         Args:
             tags: List of tags to match
             require_all: If True, entries must have all tags; if False, any tag matches
@@ -865,7 +865,7 @@ class LogCollection:
         if require_all:
             return [entry for entry in self.entries if entry.has_all_tags(tags)]
         return [entry for entry in self.entries if entry.has_any_tags(tags)]
-    
+
     def get_by_date_range(self, start: datetime, end: Optional[datetime] = None) -> List[LogEntry]:
         """Get entries within a date range."""
         end = end or datetime.now(timezone.utc)
@@ -873,11 +873,11 @@ class LogCollection:
             entry for entry in self.entries 
             if start <= entry.timestamp <= end
         ]
-    
+
     def get_by_substring(self, substring: str) -> List[LogEntry]:
         """Get entries with a specific substring in the message."""
         return [entry for entry in self.entries if substring.lower() in entry.message.lower()]
-    
+
     def get_first_index_after_timestamp(self, timestamp: datetime) -> int:
         """Get the index of the first entry after a timestamp."""
         if not self.entries:
@@ -895,15 +895,15 @@ class LogCollection:
             else:
                 high = mid
         return low
-    
+
     def include_entries(self) -> List[LogEntry]:
         """Get all entries that are not occluded."""
         return [entry for entry in self.entries if not entry.occlude]
-    
+
     def occluded_entries(self) -> List[LogEntry]:
         """Get all entries that are occluded."""
         return [entry for entry in self.entries if entry.occlude]
-    
+
     def __iter__(self):
         return iter(self.entries)
 
@@ -927,53 +927,53 @@ class GianttDoctor:
     def __init__(self, graph: 'GianttGraph'):
         self.graph = graph
         self.issues: List[Issue] = []
-    
+
     def quick_check(self) -> int:
         """Run a quick check and return number of issues found."""
         self.issues = []
-        self._check_relationships()
+        self._check_relations()
         return len(self.issues)
-    
+
     def full_diagnosis(self) -> List[Issue]:
         """Run all checks and return detailed issues."""
         self.issues = []
-        self._check_relationships()
+        self._check_relations()
         self._check_orphans()
         self._check_chains()
         self._check_charts()
         self._check_tags()
         return self.issues
 
-    def _check_relationships(self):
-        """Check for dangling references in relationships."""
+    def _check_relations(self):
+        """Check for dangling references in relations."""
         for item_id, item in self.graph.items.items():
-            for rel_type, targets in item.relationships.items():
+            for rel_type, targets in item.relations.items():
                 for target in targets:
                     if target not in self.graph.items:
                         self.issues.append(Issue(
                             type=IssueType.DANGLING_REFERENCE,
                             item_id=item_id,
-                            message=f"References non-existent item '{target}' in {rel_type.lower()} relationship",
+                            message=f"References non-existent item '{target}' in {rel_type.lower()} relation",
                             related_ids=[target],
                             suggested_fix=f"giantt modify {item_id} {rel_type.lower()} {','.join(t for t in targets if t in self.graph.items)}"
                         ))
 
     def _check_orphans(self):
-        """Find items with no incoming or outgoing relationships."""
+        """Find items with no incoming or outgoing relations."""
         for item_id, item in self.graph.items.items():
             has_incoming = any(
                 target == item_id
                 for other in self.graph.items.values()
-                for targets in other.relationships.values()
+                for targets in other.relations.values()
                 for target in targets
             )
-            has_outgoing = bool(item.relationships)
-            
+            has_outgoing = bool(item.relations)
+
             if not has_incoming and not has_outgoing:
                 self.issues.append(Issue(
                     type=IssueType.ORPHANED_ITEM,
                     item_id=item_id,
-                    message="Item has no relationships to other items",
+                    message="Item has no relations to other items",
                     related_ids=[],
                     suggested_fix="Consider connecting this item to related tasks"
                 ))
@@ -983,14 +983,14 @@ class GianttDoctor:
         unlocks_map = {
             item_id: set(targets)
             for item_id, item in self.graph.items.items()
-            for targets in [item.relationships.get('UNLOCKS', [])]
+            for targets in [item.relations.get('UNLOCKS', [])]
         }
         requires_map = {
             item_id: set(targets)
             for item_id, item in self.graph.items.items()
-            for targets in [item.relationships.get('REQUIRES', [])]
+            for targets in [item.relations.get('REQUIRES', [])]
         }
-        
+
         # Check for items that unlock something but aren't required by it
         for item_id, unlocked_items in unlocks_map.items():
             for unlocked in unlocked_items:
@@ -1009,14 +1009,14 @@ class GianttDoctor:
         # Find all unique charts
         all_charts = set()
         chart_items: Dict[str, Set[str]] = {}
-        
+
         for item_id, item in self.graph.items.items():
             for chart in item.charts:
                 all_charts.add(chart)
                 if chart not in chart_items:
                     chart_items[chart] = set()
                 chart_items[chart].add(item_id)
-        
+
         # Check for items that should probably be in certain charts
         for chart in all_charts:
             chart_set = chart_items[chart]
@@ -1024,8 +1024,8 @@ class GianttDoctor:
                 item = self.graph.items[item_id]
                 # Check if any required items or unlocked items in this chart
                 # aren't also in this chart
-                related_items = set(item.relationships.get('REQUIRES', []) + 
-                                 item.relationships.get('UNLOCKS', []))
+                related_items = set(item.relations.get('REQUIRES', []) + 
+                                 item.relations.get('UNLOCKS', []))
                 for related_id in related_items:
                     if (related_id in self.graph.items and 
                         related_id not in chart_set and
@@ -1043,22 +1043,22 @@ class GianttDoctor:
         # Find all unique tags
         all_tags = set()
         tag_items: Dict[str, Set[str]] = {}
-        
+
         for item_id, item in self.graph.items.items():
             for tag in item.tags:
                 all_tags.add(tag)
                 if tag not in tag_items:
                     tag_items[tag] = set()
                 tag_items[tag].add(item_id)
-        
+
         # Check for items that should probably have certain tags
         for tag in all_tags:
             tag_set = tag_items[tag]
             for item_id in tag_set:
                 item = self.graph.items[item_id]
                 # Check if any required items with this tag aren't also tagged
-                related_items = set(item.relationships.get('REQUIRES', []) + 
-                                 item.relationships.get('UNLOCKS', []))
+                related_items = set(item.relations.get('REQUIRES', []) + 
+                                 item.relations.get('UNLOCKS', []))
                 for related_id in related_items:
                     if (related_id in self.graph.items and 
                         related_id not in tag_set and
