@@ -49,7 +49,6 @@ def most_recent_backup_name(filepath: str) -> str:
     key = lambda x: int(x.split('.')[-2]) if x.endswith('.backup') else 0
     for backup in reversed(sorted(backups, key=key)):
         if backup.startswith(f"{os.path.basename(filepath)}.") and backup.endswith(".backup"):
-            print(f"most recent backup: {backup}")
             return os.path.join(os.path.dirname(filepath), backup)
 
 def load_graph_from_file(filepath: str) -> GianttGraph:
@@ -191,7 +190,6 @@ def save_graph_files(filepath: str, occlude_filepath: str, graph: GianttGraph):
                 with open(most_recent_backup, 'r') as f:
                     old_contents = f.read()
                 if new_contents == old_contents:
-                    print(f"Removing identical backup: {most_recent_backup}")
                     os.remove(most_recent_backup)
 
         # Run a quick health check
@@ -246,7 +244,6 @@ def save_log_files(filepath: str, occlude_filepath: str, logs: LogCollection):
                 with open(most_recent_backup, 'r') as f:
                     old_contents = f.read()
                 if new_contents == old_contents:
-                    print(f"Removing identical backup: {most_recent_backup}")
                     os.remove(most_recent_backup)
 
     except Exception as e:
