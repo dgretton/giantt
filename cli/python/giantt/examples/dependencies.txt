@@ -1,0 +1,3 @@
+○ dep1 1d "Dependency 1" {"dependencies"}
+○ dep2 2d "Dependency 2" {"dependencies"} >>> ⊢[dep1]
+○ dep3 3d "Dependency 3" {"dependencies"} >>> ⊢[dep2]

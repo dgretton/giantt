@@ -51,10 +51,75 @@ def most_recent_backup_name(filepath: str) -> str:
         if backup.startswith(f"{os.path.basename(filepath)}.") and backup.endswith(".backup"):
             return os.path.join(os.path.dirname(filepath), backup)
 
-def load_graph_from_file(filepath: str) -> GianttGraph:
-    # create a backup of the file first
-    shutil.copyfile(filepath, increment_backup_name(filepath))
+def parse_include_directives(filepath: str) -> List[str]:
+    """Parse include directives from a file.
+    
+    Include directives should be at the top of the file in the format:
+    #include path/to/file.txt
+    
+    Returns:
+        List of file paths to include
+    """
+    includes = []
+    try:
+        with open(filepath, 'r') as f:
+            for line in f:
+                line = line.strip()
+                if not line or not line.startswith('#include '):
+                    break  # Only process directives at the top
+                include_path = line[9:].strip()  # Remove '#include ' prefix
+                includes.append(include_path)
+    except FileNotFoundError:
+        click.echo(f"Warning: Include file not found: {filepath}", err=True)
+    return includes
+
+def load_graph_from_file(filepath: str, loaded_files: Optional[Set[str]] = None) -> GianttGraph:
+    """Load a graph from a file, processing include directives.
+    
+    Args:
+        filepath: Path to the file to load
+        loaded_files: Set of files already loaded (to prevent circular includes)
+        
+    Returns:
+        GianttGraph object
+    """
+    if loaded_files is None:
+        loaded_files = set()
+    
+    # Prevent circular includes
+    if filepath in loaded_files:
+        click.echo(f"Warning: Circular include detected for {filepath}, skipping", err=True)
+        return GianttGraph()
+    
+    loaded_files.add(filepath)
+    
+    # Create a backup of the file first if it exists
+    if os.path.exists(filepath):
+        shutil.copyfile(filepath, increment_backup_name(filepath))
+    else:
+        click.echo(f"Warning: File not found: {filepath}, skipping", err=True)
+        return GianttGraph()
+    
+    # Process include directives
+    includes = parse_include_directives(filepath)
+    
+    # Create the graph
     graph = GianttGraph()
+    
+    # Load included files first
+    for include_path in includes:
+        # Handle relative paths
+        if not os.path.isabs(include_path):
+            base_dir = os.path.dirname(filepath)
+            include_path = os.path.join(base_dir, include_path)
+        
+        try:
+            include_graph = load_graph_from_file(include_path, loaded_files)
+            graph = graph + include_graph
+        except Exception as e:
+            click.echo(f"Warning: Error loading include {include_path}: {e}", err=True)
+    
+    # Now load the main file
     with open(filepath, 'r') as f:
         for line in f:
             line = line.strip()
@@ -64,6 +129,7 @@ def load_graph_from_file(filepath: str) -> GianttGraph:
                     graph.add_item(item)
                 except ValueError as e:
                     click.echo(f"Warning: Skipping invalid line: {e}", err=True)
+    
     return graph
 
 def load_logs_from_file(filepath: str) -> LogCollection:
@@ -82,7 +148,9 @@ def load_logs_from_file(filepath: str) -> LogCollection:
     return logs
 
 def load_graph(filepath: str, occlude_filepath: str) -> GianttGraph:
-    return load_graph_from_file(filepath) + load_graph_from_file(occlude_filepath) # occlude status is picked up from the file path
+    """Load a graph from main and occluded files, processing includes."""
+    loaded_files = set()
+    return load_graph_from_file(filepath, loaded_files) + load_graph_from_file(occlude_filepath, loaded_files)
 
 def load_logs(filepath: str, occlude_filepath: str) -> LogCollection:
     logs = load_logs_from_file(filepath)
@@ -127,6 +195,8 @@ ITEMS_FILE_BANNER = (
         'Giantt Items\n'
         'This file contains all include Giantt items in topological\n'
         f'order according to the REQUIRES ({RelationType.REQUIRES.value}) relation.\n'
+        'You can use #include directives at the top of this file\n'
+        'to include other Giantt item files.\n'
         'Edit this file manually at your own risk.'
     )
 )
@@ -687,6 +757,41 @@ def sort(file: str, occlude_file: str):
 #giantt touch command: same as sort (just load and save) but for both graph and logs
 @cli.command()
 @click.option('--file', '-f', default=None, help='Giantt items file to use')
+@click.option('--recursive', '-r', is_flag=True, help='Show recursive includes')
+def includes(file: str, recursive: bool):
+    """Show the include structure of a Giantt items file."""
+    file = file or get_default_giantt_path()
+    
+    def process_file(filepath: str, depth: int = 0, visited: Optional[Set[str]] = None) -> None:
+        if visited is None:
+            visited = set()
+            
+        if filepath in visited:
+            click.echo(f"{'  ' * depth}└─ {filepath} (circular include, skipping)")
+            return
+            
+        visited.add(filepath)
+        
+        if not os.path.exists(filepath):
+            click.echo(f"{'  ' * depth}└─ {filepath} (file not found)")
+            return
+            
+        click.echo(f"{'  ' * depth}└─ {filepath}")
+        
+        if recursive:
+            includes = parse_include_directives(filepath)
+            for include_path in includes:
+                # Handle relative paths
+                if not os.path.isabs(include_path):
+                    base_dir = os.path.dirname(filepath)
+                    include_path = os.path.join(base_dir, include_path)
+                
+                process_file(include_path, depth + 1, visited)
+    
+    process_file(file)
+
+@cli.command()
+@click.option('--file', '-f', default=None, help='Giantt items file to use')
 @click.option('--occlude-file', '-a', default=None, help='Giantt occluded items file to use')
 @click.option('--log-file', '-l', default=None, help='Giantt log file to use')
 @click.option('--occlude-log-file', '-al', default=None, help='Giantt occlude log file to use')
@@ -882,6 +987,40 @@ def logs(file: str, occlude_file: str, tag: Tuple[str, ...], dry_run: bool, iden
     save_log_files(logs_file, logs_occlude, logs)
 
     click.echo(f"Occluded {len(to_occlude)} log" + ("s" if len(to_occlude) != 1 else ""))
+
+@cli.command()
+@click.option('--file', '-f', default=None, help='Giantt items file to use')
+@click.argument('include_path')
+def add_include(file: str, include_path: str):
+    """Add an include directive to a Giantt items file."""
+    file = file or get_default_giantt_path()
+    
+    if not os.path.exists(file):
+        raise click.ClickException(f"File not found: {file}")
+    
+    # Read the current file content
+    with open(file, 'r') as f:
+        content = f.readlines()
+    
+    # Find where to insert the include directive
+    insert_pos = 0
+    for i, line in enumerate(content):
+        if line.strip().startswith('#include '):
+            insert_pos = i + 1
+        elif line.strip() and not line.strip().startswith('#'):
+            break
+    
+    # Create a backup
+    shutil.copyfile(file, increment_backup_name(file))
+    
+    # Insert the include directive
+    content.insert(insert_pos, f"#include {include_path}\n")
+    
+    # Write the updated content
+    with open(file, 'w') as f:
+        f.writelines(content)
+    
+    click.echo(f"Added include directive for {include_path} to {file}")
 
 @cli.command()
 @click.option('--yes', '-y', is_flag=True, help='Skip confirmation prompt')

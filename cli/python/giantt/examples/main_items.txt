@@ -1,0 +1,6 @@
+#include dependencies.txt
+#include projects.txt
+
+○ main_task1 2d "Main Task 1" {"main"}
+○ main_task2 3d "Main Task 2" {"main"} >>> ⊢[main_task1]
+○ main_task3 1d "Main Task 3" {"main"} >>> ⊢[main_task2]
