@@ -1,6 +1,9 @@
 from dataclasses import dataclass
 from enum import Enum
-from typing import List, Optional, Dict, Set
+from typing import List, Optional, Dict, Set, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ..core.models import GianttGraph
 
 class IssueType(Enum):
     DANGLING_REFERENCE = "dangling_reference"
