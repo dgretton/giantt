@@ -81,7 +81,7 @@ class EscalationRate(Enum):
     CRITICAL = "!!!"
 
 
-@dataclass
+@dataclass(frozen=True)
 class DurationPart:
     """Represents a single part of a duration with an amount and unit."""
     amount: float
@@ -114,9 +114,18 @@ class DurationPart:
         'years': 'y'
     }
 
+    @classmethod
+    def create(cls, amount: float, unit: str) -> 'DurationPart':
+        """Factory method to create a normalized DurationPart."""
+        normalized_unit = cls._UNIT_NORMALIZE.get(unit, unit)
+
+        if normalized_unit not in cls._UNIT_SECONDS:
+            raise ValueError(f"Invalid duration unit: {unit}")
+
+        return cls(amount, normalized_unit)
+
     def __post_init__(self):
-        """Normalize the unit after initialization."""
-        self.unit = self._UNIT_NORMALIZE.get(self.unit, self.unit)
+        """Validate the unit."""
         if self.unit not in self._UNIT_SECONDS:
             raise ValueError(f"Invalid duration unit: {self.unit}")
 
@@ -130,12 +139,15 @@ class DurationPart:
         amount_str = str(int(self.amount)) if self.amount.is_integer() else f"{self.amount}"
         return f"{amount_str}{self.unit}"
 
+    def __hash__(self):
+        return hash((self.amount, self.unit))
 
+
+@dataclass(frozen=True)
 class Duration:
     """Handles compound durations like '6mo8d3.5s'."""
 
-    def __init__(self, parts: List[DurationPart] = None):
-        self.parts = parts or []
+    parts: List[DurationPart] = field(default_factory=list)
 
     @classmethod
     def parse(cls, duration_str: str) -> 'Duration':
@@ -150,7 +162,7 @@ class Duration:
         for match in matches:
             amount = float(match.group(1))
             unit = match.group(2)
-            parts.append(DurationPart(amount, unit))
+            parts.append(DurationPart.create(amount, unit))
 
         if not parts:
             raise ValueError(f"No valid duration parts found in: {duration_str}")
@@ -211,6 +223,9 @@ class Duration:
         if not isinstance(other, Duration):
             return NotImplemented
         return self.total_seconds() >= other.total_seconds()
+
+    def __hash__(self):
+        return hash(tuple(self.parts))
 
 
 @dataclass
