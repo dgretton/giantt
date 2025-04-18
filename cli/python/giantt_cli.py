@@ -1009,16 +1009,23 @@ def clean(yes: bool, keep: int):
             click.echo(f"Recovery failed: {recovery_error}", err=True)
             click.echo(f"Some files may have been moved to temporary directory: {temp_dir}", err=True)
 
-@cli.command()
+@cli.group()
 @click.option('--file', '-f', default=None, help='Giantt items file to use')
 @click.option('--occlude-file', '-a', default=None, help='Giantt occluded items file to use')
-@click.option('--fix/--no-fix', default=False, help='Attempt to automatically fix issues')
-def doctor(file: str, occlude_file: str, fix: bool):
-    """Check the health of the Giantt graph and optionally fix issues."""
-    file = file or get_default_giantt_path()
-    occlude_file = occlude_file or get_default_giantt_path(occlude=True)
-    graph = load_graph(file, occlude_file)
-    doctor = GianttDoctor(graph)
+@click.pass_context
+def doctor(ctx, file: str, occlude_file: str):
+    """Check the health of the Giantt graph and fix issues."""
+    ctx.ensure_object(dict)
+    ctx.obj['file'] = file or get_default_giantt_path()
+    ctx.obj['occlude_file'] = occlude_file or get_default_giantt_path(occlude=True)
+    ctx.obj['graph'] = load_graph(ctx.obj['file'], ctx.obj['occlude_file'])
+    ctx.obj['doctor'] = GianttDoctor(ctx.obj['graph'])
+
+@doctor.command('check')
+@click.pass_context
+def doctor_check(ctx):
+    """Check the health of the Giantt graph and report issues."""
+    doctor = ctx.obj['doctor']
     issues = doctor.full_diagnosis()
 
     if not issues:
@@ -1041,10 +1048,102 @@ def doctor(file: str, occlude_file: str, fix: bool):
             if issue.suggested_fix:
                 click.echo(f"    Suggested fix: {issue.suggested_fix}")
 
-    if fix:
-        click.echo("\nAttempting to fix issues...")
-        # TODO: Implement auto-fixing logic
-        click.echo("Auto-fixing not yet implemented")
+@doctor.command('fix')
+@click.option('--type', '-t', 'issue_type', help='Type of issue to fix (e.g., dangling_reference)')
+@click.option('--item', '-i', help='Fix issues for a specific item ID')
+@click.option('--all', '-a', is_flag=True, help='Fix all fixable issues')
+@click.option('--dry-run', is_flag=True, help='Show what would be fixed without making changes')
+@click.pass_context
+def doctor_fix(ctx, issue_type: str, item: str, all: bool, dry_run: bool):
+    """Fix issues in the Giantt graph.
+    
+    Examples:
+        # Fix all dangling references
+        giantt doctor fix --type dangling_reference
+        
+        # Fix all issues for a specific item
+        giantt doctor fix --item item123
+        
+        # Fix all fixable issues
+        giantt doctor fix --all
+        
+        # Do a dry run first
+        giantt doctor fix --all --dry-run
+    """
+    doctor = ctx.obj['doctor']
+    graph = ctx.obj['graph']
+    file = ctx.obj['file']
+    occlude_file = ctx.obj['occlude_file']
+    
+    # Run diagnosis first
+    issues = doctor.full_diagnosis()
+    
+    if not issues:
+        click.echo(click.style("✓ Graph is healthy! No issues to fix.", fg='green'))
+        return
+        
+    # Filter issues based on options
+    issues_to_fix = []
+    
+    if issue_type:
+        try:
+            issue_type_enum = IssueType.from_string(issue_type)
+            issues_to_fix = doctor.get_issues_by_type(issue_type_enum)
+            if not issues_to_fix:
+                click.echo(f"No issues of type '{issue_type}' found.")
+                return
+        except ValueError:
+            valid_types = [t.value for t in IssueType]
+            click.echo(f"Invalid issue type: {issue_type}. Valid types are: {', '.join(valid_types)}")
+            return
+    elif item:
+        issues_to_fix = [i for i in issues if i.item_id == item]
+        if not issues_to_fix:
+            click.echo(f"No issues found for item '{item}'.")
+            return
+    elif all:
+        issues_to_fix = issues
+    else:
+        click.echo("Please specify --type, --item, or --all to indicate which issues to fix.")
+        return
+        
+    # Show what would be fixed
+    click.echo(click.style(f"\nFound {len(issues_to_fix)} issue(s) that can be fixed:", fg='yellow'))
+    for issue in issues_to_fix:
+        click.echo(f"  • {issue.item_id}: {issue.message}")
+        if issue.suggested_fix:
+            click.echo(f"    Suggested fix: {issue.suggested_fix}")
+            
+    if dry_run:
+        click.echo("\nDry run - no changes made.")
+        return
+        
+    # Confirm before fixing
+    if not click.confirm("\nDo you want to fix these issues?"):
+        click.echo("Aborted. No changes made.")
+        return
+        
+    # Fix issues
+    fixed_issues = doctor.fix_issues(
+        issue_type=issue_type_enum if issue_type else None,
+        item_id=item
+    )
+    
+    if fixed_issues:
+        # Save changes
+        save_graph_files(file, occlude_file, graph)
+        click.echo(click.style(f"\nSuccessfully fixed {len(fixed_issues)} issue(s):", fg='green'))
+        for issue in fixed_issues:
+            click.echo(f"  • {issue.item_id}: {issue.message}")
+    else:
+        click.echo("\nNo issues were fixed. Some issues may require manual intervention.")
+
+@doctor.command('list-types')
+def doctor_list_types():
+    """List all available issue types that can be fixed."""
+    click.echo("Available issue types:")
+    for issue_type in IssueType:
+        click.echo(f"  • {issue_type.value}")
 
 if __name__ == '__main__':
     cli()

@@ -940,6 +940,14 @@ class IssueType(Enum):
     INCOMPLETE_CHAIN = "incomplete_chain"
     CHART_INCONSISTENCY = "chart_inconsistency"
     TAG_INCONSISTENCY = "tag_inconsistency"
+    
+    @classmethod
+    def from_string(cls, value: str) -> 'IssueType':
+        """Convert a string to an IssueType."""
+        for issue_type in cls:
+            if issue_type.value == value:
+                return issue_type
+        raise ValueError(f"Invalid issue type: {value}")
 
 @dataclass
 class Issue:
@@ -953,6 +961,7 @@ class GianttDoctor:
     def __init__(self, graph: 'GianttGraph'):
         self.graph = graph
         self.issues: List[Issue] = []
+        self.fixed_issues: List[Issue] = []
 
     def quick_check(self) -> int:
         """Run a quick check and return number of issues found."""
@@ -970,6 +979,110 @@ class GianttDoctor:
         # self._check_charts()
         # self._check_tags()
         return self.issues
+        
+    def get_issues_by_type(self, issue_type: IssueType) -> List[Issue]:
+        """Get all issues of a specific type."""
+        return [issue for issue in self.issues if issue.type == issue_type]
+    
+    def fix_issues(self, issue_type: Optional[IssueType] = None, item_id: Optional[str] = None) -> List[Issue]:
+        """Fix issues of a specific type or for a specific item."""
+        # Filter issues to fix
+        issues_to_fix = self.issues
+        if issue_type:
+            issues_to_fix = [issue for issue in issues_to_fix if issue.type == issue_type]
+        if item_id:
+            issues_to_fix = [issue for issue in issues_to_fix if issue.item_id == item_id]
+            
+        fixed = []
+        for issue in issues_to_fix:
+            if self._fix_issue(issue):
+                fixed.append(issue)
+                
+        # Remove fixed issues from the issues list
+        for issue in fixed:
+            if issue in self.issues:
+                self.issues.remove(issue)
+                
+        self.fixed_issues.extend(fixed)
+        return fixed
+    
+    def _fix_issue(self, issue: Issue) -> bool:
+        """Fix a specific issue. Returns True if fixed, False otherwise."""
+        if issue.type == IssueType.DANGLING_REFERENCE:
+            return self._fix_dangling_reference(issue)
+        elif issue.type == IssueType.INCOMPLETE_CHAIN:
+            return self._fix_incomplete_chain(issue)
+        # Add more issue type handlers as needed
+        return False
+        
+    def _fix_dangling_reference(self, issue: Issue) -> bool:
+        """Fix a dangling reference issue."""
+        item = self.graph.items.get(issue.item_id)
+        if not item:
+            return False
+            
+        # Find the relation type and target from the message
+        rel_type = None
+        target = None
+        for rel_name in RelationType._member_names_:
+            if rel_name.lower() in issue.message.lower():
+                rel_type = rel_name
+                break
+                
+        if not rel_type:
+            return False
+            
+        # Extract the target ID from the message
+        import re
+        match = re.search(r"non-existent item '([^']+)'", issue.message)
+        if not match:
+            return False
+            
+        target = match.group(1)
+        
+        # Remove the dangling reference
+        if rel_type in item.relations and target in item.relations[rel_type]:
+            item.relations[rel_type].remove(target)
+            if not item.relations[rel_type]:
+                del item.relations[rel_type]
+            return True
+            
+        return False
+        
+    def _fix_incomplete_chain(self, issue: Issue) -> bool:
+        """Fix an incomplete chain issue."""
+        if not issue.related_ids or not issue.suggested_fix:
+            return False
+            
+        item = self.graph.items.get(issue.item_id)
+        related_item = self.graph.items.get(issue.related_ids[0])
+        if not item or not related_item:
+            return False
+            
+        # Parse the suggested fix to determine what to do
+        parts = issue.suggested_fix.split()
+        if len(parts) < 4:
+            return False
+            
+        target_id = parts[2]
+        action = parts[3]
+        rel_type = parts[4].upper() if len(parts) > 4 else None
+        
+        if target_id != issue.item_id and target_id != issue.related_ids[0]:
+            return False
+            
+        if "add" in action.lower() and rel_type:
+            target_item = self.graph.items.get(target_id)
+            if not target_item:
+                return False
+                
+            # Add the relation
+            target_item.relations.setdefault(rel_type, [])
+            if parts[5] not in target_item.relations[rel_type]:
+                target_item.relations[rel_type].append(parts[5])
+            return True
+            
+        return False
 
     def _check_references(self):
         """Check for dangling references in relations."""
