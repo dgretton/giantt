@@ -899,8 +899,8 @@ def items(file: str, occlude_file: str, tag: Tuple[str, ...], dry_run: bool, ide
     # Add items by tag
     for t in tag:
         for item in graph.included_items():
-            if t in item.tags:
-                to_occlude.add(item.id)
+            if t in graph.items[item].tags:
+                to_occlude.add(item)
 
     if not to_occlude:
         click.echo("No included items found to occlude")
